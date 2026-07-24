@@ -8,7 +8,7 @@ describe("formatIndexErrors", () => {
         expect(formatIndexErrors(undefined as unknown as IndexErrors[])).toBe("");
     });
 
-    it("formats one error block per index", () => {
+    it("formats one error block per index, including document and action", () => {
         const errors = [
             {
                 name: "People/ByName",
@@ -20,7 +20,7 @@ describe("formatIndexErrors", () => {
         const text = formatIndexErrors(errors);
         expect(text).toContain("Indexing errors:");
         expect(text).toContain("Index 'People/ByName' (1 errors):");
-        expect(text).toContain("boom");
+        expect(text).toContain("- boom (document: people/1, action: Map)");
     });
 
     it("joins multiple index blocks with a newline and renders an empty errors array with no lines", () => {
@@ -40,7 +40,7 @@ describe("formatIndexErrors", () => {
         expect(text).toBe(
             "Indexing errors:\n" +
             "Index 'People/ByName' (1 errors):\n" +
-            "- boom\n" +
+            "- boom (document: people/1, action: Map)\n" +
             "Index 'Orders/ByCompany' (0 errors):\n"
         );
     });

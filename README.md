@@ -3,15 +3,26 @@
 RavenDB test driver for Node.js — the port of [Raven.TestDriver](https://ravendb.net/docs/article-page/latest/csharp/start/test-driver) (C#).
 Starts one embedded RavenDB server per test process and hands out an isolated, auto-deleted database per `getDocumentStore()` call.
 
-Built on `ravendb-embedded` (currently consumed from a packed tarball; will move to the npm registry once released). This package is private and is not published to npm — it's consumed directly from a git checkout or tarball.
+Built on `ravendb-embedded`. Neither package is published to npm yet — both are consumed from a local git checkout (packed into a tarball) until they're released to the registry.
 
 ## Install
 
+Neither `ravendb-test-driver` nor its `ravendb-embedded` dependency is on the npm registry yet. Until then, build each from a checkout and pack it into a tarball:
+
 ```bash
-pnpm add -D ./ravendb-embedded-<version>.tgz ravendb-test-driver
+# from a checkout of ravendb-nodejs-embedded
+cd ravendb-nodejs-embedded && pnpm build && pnpm pack
+# from a checkout of ravendb-nodejs-testdriver (this repo)
+cd ravendb-nodejs-testdriver && pnpm build && pnpm pack
 ```
 
-`ravendb` (the RavenDB client) is a peer dependency — install it alongside if it isn't already in the project.
+Then install both tarballs into your test project:
+
+```bash
+pnpm add -D /path/to/ravendb-embedded-<version>.tgz /path/to/ravendb-test-driver-<version>.tgz
+```
+
+`ravendb` (the RavenDB client) is a peer dependency — install it alongside if it isn't already in the project. Registry installs (`pnpm add -D ravendb-test-driver`) will work once both packages are released to npm.
 
 ## Usage (vitest)
 
@@ -72,7 +83,7 @@ export default defineConfig({
 
 With Jest, the equivalent is running the suite in a single worker process, e.g. `jest --runInBand`.
 
-If you need multiple concurrent servers instead (e.g. to parallelize across workers), use `driver.configureScopedServer(options)` to give an individual `RavenTestDriver` instance its own embedded server rather than sharing the process-wide one.
+If you need multiple concurrent servers instead (e.g. to parallelize across workers), see the "Internal/advanced" note below.
 
 ## License / EULA
 
@@ -90,6 +101,10 @@ If you need multiple concurrent servers instead (e.g. to parallelize across work
 - `driver.waitForUserToContinueTheTest(store)` — opens RavenDB Studio for the store's database and resumes once you create a `Debug/Done` document from Studio.
   **Warning:** this blocks forever until that document appears — it never resumes on its own (unlike the C# version, it cannot detect an attached debugger). Treat it as an interactive/debug-only helper and never leave a call to it in committed test code, or CI will hang indefinitely.
 - `driver.dispose()` — disposes all stores handed out by this driver (and any scoped server). Also available via `await using driver = new RavenTestDriver()` (TypeScript 5.2+ / `ESNext.Disposable` lib, since `RavenTestDriver` implements `AsyncDisposable`).
+
+### Internal/advanced
+
+`driver.configureScopedServer(options)` exists to give an individual `RavenTestDriver` instance its own embedded server instead of sharing the process-wide one (e.g. to run multiple concurrent servers). It is marked `@internal` and used for RavenDB-internal testing — it is not part of the supported public API and may change without notice.
 
 ## Testing this package
 

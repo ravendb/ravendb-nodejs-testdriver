@@ -25,7 +25,9 @@ export function formatIndexErrors(errors: IndexErrors[]): string {
         return "";
     }
     const blocks = errors.map(indexErrors => {
-        const errorsListText = indexErrors.errors.map(x => `- ${x.error}`).join("\n");
+        const errorsListText = indexErrors.errors
+            .map(x => `- ${x.error} (document: ${x.document}, action: ${x.action})`)
+            .join("\n");
         return `Index '${indexErrors.name}' (${indexErrors.errors.length} errors):\n${errorsListText}`;
     });
     return `Indexing errors:\n${blocks.join("\n")}`;
@@ -73,9 +75,12 @@ function getGlobalStore(): Promise<IDocumentStore> {
 }
 
 /**
- * Best-effort database deletion, shared by the normal afterDispose path and the
+ * Database deletion, shared by the normal afterDispose path and the
  * getDocumentStore failure-cleanup path. Swallows "already gone"/"no leader"
- * errors the same way both callers previously did inline.
+ * errors the same way both callers previously did inline, but rethrows any
+ * other unexpected failure so it can propagate to dispose()'s AggregateError
+ * (C# parity) — callers that need best-effort semantics instead (e.g. the
+ * getDocumentStore catch-path cleanup) must wrap their own call in try/catch.
  */
 async function deleteDatabase(parentStore: IDocumentStore, name: string): Promise<void> {
     try {
@@ -85,8 +90,7 @@ async function deleteDatabase(parentStore: IDocumentStore, name: string): Promis
         if (error.name === "DatabaseDoesNotExistException" || error.name === "NoLeaderException") {
             return;
         }
-        // eslint-disable-next-line no-console
-        console.error(`Failed to delete database '${name}':`, err);
+        throw err;
     }
 }
 
@@ -255,20 +259,36 @@ export class RavenTestDriver implements AsyncDisposable {
             // inside the event handler would still be unset by the time dispose()
             // reaches its await, letting the deletion race server teardown.
             const currentStore = store;
-            const disposalDone = new Promise<void>((resolve) => {
+            const disposalDone = new Promise<void>((resolve, reject) => {
                 currentStore.once("afterDispose", (callback: () => void) => {
+                    let deleteError: unknown;
                     const finish = () => {
                         this._storeDisposals.delete(currentStore);
-                        resolve();
+                        if (deleteError) {
+                            reject(deleteError);
+                        } else {
+                            resolve();
+                        }
                         callback();
                     };
                     if (!this._documentStores.delete(currentStore)) {
                         finish();
                         return;
                     }
-                    deleteDatabase(parentStore, name).finally(finish);
+                    deleteDatabase(parentStore, name)
+                        .catch((err) => {
+                            deleteError = err;
+                        })
+                        .finally(finish);
                 });
             });
+            // A store disposed manually (without driver.dispose()) still needs
+            // disposalDone to reject for _doDispose's Promise.allSettled to see the
+            // error — but that means nobody may ever await it, which would surface
+            // as an unhandled-rejection warning. Attach a no-op catch as a side
+            // statement (it returns a new promise; the original reference below is
+            // left untouched and still rejects for _doDispose's purposes).
+            disposalDone.catch(() => { /* see comment above */ });
             this._storeDisposals.set(store, disposalDone);
 
             await this._importDatabase(store, name);
@@ -296,7 +316,15 @@ export class RavenTestDriver implements AsyncDisposable {
                     // store may not have been initialized yet — ignore
                 }
             }
-            await deleteDatabase(parentStore, name);
+            try {
+                // Best-effort here: the hook error above must win, not a
+                // deletion failure — deleteDatabase now rethrows unexpected
+                // errors for the afterDispose path, so this call needs its own
+                // swallow to preserve that behavior.
+                await deleteDatabase(parentStore, name);
+            } catch {
+                // ignore — the original hook error is what should propagate
+            }
             throw error;
         }
     }
@@ -372,7 +400,6 @@ export class RavenTestDriver implements AsyncDisposable {
 
         this.openBrowser(documentsPage);
 
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             await delay(500);
 
@@ -386,7 +413,6 @@ export class RavenTestDriver implements AsyncDisposable {
     }
 
     protected openBrowser(url: string): void {
-        // eslint-disable-next-line no-console
         console.log(url);
 
         if (process.platform === "win32") {
@@ -424,8 +450,15 @@ export class RavenTestDriver implements AsyncDisposable {
 
         // afterDispose handlers queue database deletions — genuinely wait for them,
         // since these promises were created at registration time (not inside the
-        // event handler), they are already populated here.
-        await Promise.allSettled(disposals);
+        // event handler), they are already populated here. An unexpected deletion
+        // failure rejects disposalDone (see getDocumentStore) so it can surface
+        // here alongside the other disposal errors (C# AggregateError parity).
+        const results = await Promise.allSettled(disposals);
+        for (const r of results) {
+            if (r.status === "rejected") {
+                errors.push(r.reason);
+            }
+        }
 
         if (this._scopedServer && this._scopedStorePromise) {
             try {
@@ -446,6 +479,15 @@ export class RavenTestDriver implements AsyncDisposable {
         this._scopedServer = null;
         this._scopedServerOptions = null;
         this._scopedStorePromise = null;
+
+        // C# parity: DatabaseDumpFileStream?.Dispose() — best-effort, since the
+        // stream may already be closed/consumed.
+        const dumpStream = this._options.databaseDumpFileStream as { destroy?: () => void } | undefined;
+        try {
+            dumpStream?.destroy?.();
+        } catch {
+            /* best effort */
+        }
 
         this._disposed = true;
         this.onDriverDisposed?.();
