@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { DocumentStore, GetDatabaseNamesOperation } from "ravendb";
+import type { IDocumentStore } from "ravendb";
 import { RavenTestDriver, _disposeGlobalServer } from "../../src/RavenTestDriver";
 import { TestServerOptions } from "../../src/TestServerOptions";
 import { createTestServerOptions } from "../testOptions";
@@ -102,6 +103,58 @@ describe("RavenTestDriver", () => {
             }
         } finally {
             await dedicatedDriver.dispose();
+        }
+    });
+
+    it("setupDatabase constructor option seeds every store", async () => {
+        const seedingDriver = new RavenTestDriver({
+            setupDatabase: async (store) => {
+                const session = store.openSession();
+                await session.store<Person>({ name: "Seeded" }, "people/seed");
+                await session.saveChanges();
+            }
+        });
+        try {
+            const store = await seedingDriver.getDocumentStore(undefined, "seeded");
+            const session = store.openSession();
+            const seeded = await session.load<Person>("people/seed");
+            expect(seeded?.name).toBe("Seeded");
+        } finally {
+            await seedingDriver.dispose();
+        }
+    });
+
+    it("subclass hook overrides work", async () => {
+        class SeedingTestDriver extends RavenTestDriver {
+            protected override async setupDatabase(store: IDocumentStore): Promise<void> {
+                const session = store.openSession();
+                await session.store<Person>({ name: "SubclassSeeded" }, "people/seed");
+                await session.saveChanges();
+            }
+        }
+        const seedingDriver = new SeedingTestDriver();
+        try {
+            const store = await seedingDriver.getDocumentStore(undefined, "subclassseeded");
+            const session = store.openSession();
+            const seeded = await session.load<Person>("people/seed");
+            expect(seeded?.name).toBe("SubclassSeeded");
+        } finally {
+            await seedingDriver.dispose();
+        }
+    });
+
+    it("preConfigureDatabase sees the database record before creation", async () => {
+        let seenName = "";
+        const hookedDriver = new RavenTestDriver({
+            preConfigureDatabase: (record) => {
+                seenName = record.databaseName ?? "";
+            }
+        });
+        try {
+            const store = await hookedDriver.getDocumentStore(undefined, "preconfigured");
+            expect(seenName).toBe(store.database);
+        } finally {
+            await hookedDriver.dispose();
         }
     });
 });

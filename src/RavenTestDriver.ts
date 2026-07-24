@@ -105,6 +105,21 @@ export class RavenTestDriver implements AsyncDisposable {
         return this._disposed;
     }
 
+    /** Called before store.initialize(). Override in a subclass or pass via constructor options. */
+    protected async preInitialize(store: IDocumentStore): Promise<void> {
+        await this._options.preInitialize?.(store);
+    }
+
+    /** Called on the DatabaseRecord before CreateDatabaseOperation. */
+    protected async preConfigureDatabase(databaseRecord: DatabaseRecord): Promise<void> {
+        await this._options.preConfigureDatabase?.(databaseRecord);
+    }
+
+    /** Called after the store is initialized — seed data here. */
+    protected async setupDatabase(store: IDocumentStore): Promise<void> {
+        await this._options.setupDatabase?.(store);
+    }
+
     public static configureServer(options: TestServerOptions): void {
         if (globalStorePromise) {
             throw new Error(
@@ -120,10 +135,14 @@ export class RavenTestDriver implements AsyncDisposable {
 
         const databaseRecord: DatabaseRecord = { databaseName: name };
 
+        await this.preConfigureDatabase(databaseRecord);
+
         await parentStore.maintenance.server.send(new CreateDatabaseOperation(databaseRecord));
 
         const store = new DocumentStore(parentStore.urls, name);
         store.conventions.disableTopologyUpdates = true;
+
+        await this.preInitialize(store);
 
         store.initialize();
 
@@ -157,6 +176,8 @@ export class RavenTestDriver implements AsyncDisposable {
             });
         });
         this._storeDisposals.set(store, disposalDone);
+
+        await this.setupDatabase(store);
 
         this._documentStores.add(store);
 
