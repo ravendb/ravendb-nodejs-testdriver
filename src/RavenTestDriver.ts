@@ -36,6 +36,8 @@ async function startServerAndCreateStore(server: EmbeddedServer, options: Server
     await server.startServer(options);
     const url = await server.getServerUri();
 
+    // The node client requires a database argument; this store is used only for
+    // server-wide maintenance operations (create/delete database), so it is left empty.
     const store = new DocumentStore(url, "");
     store.conventions.disableTopologyUpdates = true;
     store.initialize();
@@ -88,8 +90,9 @@ export interface RavenTestDriverOptions {
 export class RavenTestDriver implements AsyncDisposable {
     private readonly _options: RavenTestDriverOptions;
     private readonly _documentStores = new Set<IDocumentStore>();
-    private readonly _pendingDeletes = new Set<Promise<void>>();
+    private readonly _storeDisposals = new Map<IDocumentStore, Promise<void>>();
     private _disposed = false;
+    private _disposePromise: Promise<void> | null = null;
 
     /** Invoked once, after dispose() finishes. (C# DriverDisposed event.) */
     public onDriverDisposed?: () => void;
@@ -124,27 +127,36 @@ export class RavenTestDriver implements AsyncDisposable {
 
         store.initialize();
 
-        store.once("afterDispose", (callback: () => void) => {
-            if (!this._documentStores.delete(store)) {
-                callback();
-                return;
-            }
-            const deletion = parentStore.maintenance.server
-                .send(new DeleteDatabasesOperation({ databaseNames: [name], hardDelete: true }))
-                .then(() => undefined)
-                .catch((err: Error) => {
-                    if (err.name === "DatabaseDoesNotExistException" || err.name === "NoLeaderException") {
-                        return;
-                    }
-                    // eslint-disable-next-line no-console
-                    console.error(`Failed to delete database '${name}':`, err);
-                });
-            this._pendingDeletes.add(deletion);
-            void deletion.finally(() => {
-                this._pendingDeletes.delete(deletion);
-                callback();
+        // Created up front (at registration time) so dispose() can await it —
+        // DocumentStore.dispose() is fire-and-forget and "afterDispose" fires
+        // at least a couple of microtask hops later, so a promise populated only
+        // inside the event handler would still be unset by the time dispose()
+        // reaches its await, letting the deletion race server teardown.
+        const disposalDone = new Promise<void>((resolve) => {
+            store.once("afterDispose", (callback: () => void) => {
+                const finish = () => {
+                    this._storeDisposals.delete(store);
+                    resolve();
+                    callback();
+                };
+                if (!this._documentStores.delete(store)) {
+                    finish();
+                    return;
+                }
+                parentStore.maintenance.server
+                    .send(new DeleteDatabasesOperation({ databaseNames: [name], hardDelete: true }))
+                    .then(() => undefined)
+                    .catch((err: Error) => {
+                        if (err.name === "DatabaseDoesNotExistException" || err.name === "NoLeaderException") {
+                            return;
+                        }
+                        // eslint-disable-next-line no-console
+                        console.error(`Failed to delete database '${name}':`, err);
+                    })
+                    .finally(finish);
             });
         });
+        this._storeDisposals.set(store, disposalDone);
 
         this._documentStores.add(store);
 
@@ -152,13 +164,22 @@ export class RavenTestDriver implements AsyncDisposable {
     }
 
     public async dispose(): Promise<void> {
-        if (this._disposed) {
-            return;
+        if (this._disposePromise) {
+            return this._disposePromise;
         }
+        this._disposePromise = this._doDispose();
+        return this._disposePromise;
+    }
 
+    private async _doDispose(): Promise<void> {
         const errors: unknown[] = [];
+        const disposals: Promise<void>[] = [];
 
         for (const store of [...this._documentStores]) {
+            const disposalDone = this._storeDisposals.get(store);
+            if (disposalDone) {
+                disposals.push(disposalDone);
+            }
             try {
                 store.dispose();
             } catch (e) {
@@ -166,8 +187,10 @@ export class RavenTestDriver implements AsyncDisposable {
             }
         }
 
-        // afterDispose handlers queue database deletions — let them finish
-        await Promise.allSettled([...this._pendingDeletes]);
+        // afterDispose handlers queue database deletions — genuinely wait for them,
+        // since these promises were created at registration time (not inside the
+        // event handler), they are already populated here.
+        await Promise.allSettled(disposals);
 
         this._disposed = true;
         this.onDriverDisposed?.();

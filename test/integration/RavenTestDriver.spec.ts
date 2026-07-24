@@ -78,4 +78,30 @@ describe("RavenTestDriver", () => {
             parent.dispose();
         }
     });
+
+    it("driver.dispose() waits for the database deletion to complete before returning", async () => {
+        const dedicatedDriver = new RavenTestDriver();
+        try {
+            const store = await dedicatedDriver.getDocumentStore(undefined, "disposewaits");
+            const databaseName = store.database;
+            const urls = store.urls;
+
+            await dedicatedDriver.dispose();
+
+            // No polling here: dispose() must only resolve once the
+            // DeleteDatabasesOperation triggered by the store's afterDispose
+            // handler has actually completed.
+            const parent = new DocumentStore(urls, "");
+            parent.conventions.disableTopologyUpdates = true;
+            parent.initialize();
+            try {
+                const names = await parent.maintenance.server.send(new GetDatabaseNamesOperation(0, 100));
+                expect(names).not.toContain(databaseName);
+            } finally {
+                parent.dispose();
+            }
+        } finally {
+            await dedicatedDriver.dispose();
+        }
+    });
 });
