@@ -1,0 +1,27 @@
+{
+  "name": "ravendb-test-driver",
+  "version": "7.2.0",
+  "description": "RavenDB test driver for Node.js — spins up an embedded RavenDB server and hands out isolated per-test document stores",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration"
+  },
+  "peerDependencies": {
+    "ravendb": "^7.0.0"
+  },
+  "dependencies": {
+    "ravendb-embedded": "file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "ravendb": "^7.2.5",
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.10"
+  },
+  "private": true
+}
