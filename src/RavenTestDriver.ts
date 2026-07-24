@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { pipeline } from "node:stream/promises";
 import {
@@ -135,6 +136,9 @@ export class RavenTestDriver implements AsyncDisposable {
     private readonly _storeDisposals = new Map<IDocumentStore, Promise<void>>();
     private _disposed = false;
     private _disposePromise: Promise<void> | null = null;
+    private _scopedServer: EmbeddedServer | null = null;
+    private _scopedServerOptions: TestServerOptions | null = null;
+    private _scopedStorePromise: Promise<IDocumentStore> | null = null;
 
     /** Invoked once, after dispose() finishes. (C# DriverDisposed event.) */
     public onDriverDisposed?: () => void;
@@ -186,9 +190,45 @@ export class RavenTestDriver implements AsyncDisposable {
         globalServerOptions = options;
     }
 
+    /**
+     * @internal Runs this driver against its own embedded server instead of the
+     * per-process global one. Returns a disposer that stops that server.
+     */
+    public configureScopedServer(options: TestServerOptions, server?: EmbeddedServer): () => Promise<void> {
+        if (this._scopedServer) {
+            throw new Error("Local embedded server is already set.");
+        }
+        if (this._scopedStorePromise) {
+            throw new Error("Cannot set embedded server after document store has been initialized.");
+        }
+
+        this._scopedServer = server ?? new EmbeddedServer();
+        this._scopedServerOptions = options;
+
+        return async () => {
+            try {
+                await this._scopedServer?.dispose();
+            } catch {
+                // swallow exceptions, same as C#
+            } finally {
+                this._scopedServer = null;
+                this._scopedServerOptions = null;
+                this._scopedStorePromise = null;
+            }
+        };
+    }
+
+    private _getScopedStore(): Promise<IDocumentStore> {
+        if (!this._scopedStorePromise) {
+            const options = this._scopedServerOptions ?? globalServerOptions ?? new TestServerOptions();
+            this._scopedStorePromise = startServerAndCreateStore(this._scopedServer!, options);
+        }
+        return this._scopedStorePromise;
+    }
+
     public async getDocumentStore(options?: GetDocumentStoreOptions, database = "test"): Promise<IDocumentStore> {
         const name = `${database}_${++databaseIndex}`;
-        const parentStore = await getGlobalStore();
+        const parentStore = this._scopedServer ? await this._getScopedStore() : await getGlobalStore();
 
         const databaseRecord: DatabaseRecord = { databaseName: name };
 
@@ -316,6 +356,44 @@ export class RavenTestDriver implements AsyncDisposable {
         throw new Error(`The indexes stayed stale for more than ${timeout} ms. ${allIndexErrorsText}`);
     }
 
+    /**
+     * Opens RavenDB Studio for the store's database and blocks until a document
+     * with id "Debug/Done" is created (create it from Studio to resume the test).
+     * Unlike C#, this cannot detect an attached debugger — it always waits.
+     */
+    public async waitForUserToContinueTheTest(store: IDocumentStore): Promise<void> {
+        const databaseNameEncoded = encodeURIComponent(store.database);
+        const documentsPage = store.urls[0]
+            + "/studio/index.html#databases/documents?&database=" + databaseNameEncoded + "&withStop=true";
+
+        this.openBrowser(documentsPage);
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            await delay(500);
+
+            const session = store.openSession();
+            if (await session.advanced.exists("Debug/Done")) {
+                await session.delete("Debug/Done");
+                await session.saveChanges();
+                break;
+            }
+        }
+    }
+
+    protected openBrowser(url: string): void {
+        // eslint-disable-next-line no-console
+        console.log(url);
+
+        if (process.platform === "win32") {
+            spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore" }).unref();
+        } else if (process.platform === "darwin") {
+            spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
+        } else {
+            spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
+        }
+    }
+
     public async dispose(): Promise<void> {
         if (this._disposePromise) {
             return this._disposePromise;
@@ -344,6 +422,22 @@ export class RavenTestDriver implements AsyncDisposable {
         // since these promises were created at registration time (not inside the
         // event handler), they are already populated here.
         await Promise.allSettled(disposals);
+
+        if (this._scopedServer && this._scopedStorePromise) {
+            try {
+                (await this._scopedStorePromise).dispose();
+            } catch (e) {
+                errors.push(e);
+            }
+        }
+
+        if (this._scopedServer) {
+            try {
+                await this._scopedServer.dispose();
+            } catch (e) {
+                errors.push(e);
+            }
+        }
 
         this._disposed = true;
         this.onDriverDisposed?.();
