@@ -269,4 +269,13 @@ describe("RavenTestDriver", () => {
             fs.rmSync(dumpDir, { recursive: true, force: true });
         }
     });
+
+    it("rejects getDocumentStore after the driver has been disposed", async () => {
+        const dedicatedDriver = new RavenTestDriver();
+        await dedicatedDriver.getDocumentStore(undefined, "disposedguard");
+        await dedicatedDriver.dispose();
+
+        await expect(dedicatedDriver.getDocumentStore(undefined, "disposedguard"))
+            .rejects.toThrow(/already been disposed/);
+    });
 });

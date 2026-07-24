@@ -227,6 +227,10 @@ export class RavenTestDriver implements AsyncDisposable {
     }
 
     public async getDocumentStore(options?: GetDocumentStoreOptions, database = "test"): Promise<IDocumentStore> {
+        if (this._disposed) {
+            throw new Error("The test driver has already been disposed.");
+        }
+
         const name = `${database}_${++databaseIndex}`;
         const parentStore = this._scopedServer ? await this._getScopedStore() : await getGlobalStore();
 
@@ -438,6 +442,10 @@ export class RavenTestDriver implements AsyncDisposable {
                 errors.push(e);
             }
         }
+
+        this._scopedServer = null;
+        this._scopedServerOptions = null;
+        this._scopedStorePromise = null;
 
         this._disposed = true;
         this.onDriverDisposed?.();
