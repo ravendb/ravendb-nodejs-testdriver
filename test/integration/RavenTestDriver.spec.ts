@@ -1,5 +1,14 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
-import { DocumentStore, GetDatabaseNamesOperation, IndexDefinition, PutIndexesOperation } from "ravendb";
+import {
+    DatabaseSmugglerExportOptions,
+    DocumentStore,
+    GetDatabaseNamesOperation,
+    IndexDefinition,
+    PutIndexesOperation,
+} from "ravendb";
 import type { IDocumentStore } from "ravendb";
 import { RavenTestDriver, _disposeGlobalServer } from "../../src/RavenTestDriver";
 import { TestServerOptions } from "../../src/TestServerOptions";
@@ -221,6 +230,43 @@ describe("RavenTestDriver", () => {
                 .whereEquals("name", "Alice")
                 .all();
             expect(results).toHaveLength(1);
+        }
+    });
+
+    it("imports a database dump into every new store", async () => {
+        // build a dump: seed a database, export it
+        const sourceStore = await driver.getDocumentStore(undefined, "dumpsource");
+        {
+            const session = sourceStore.openSession();
+            await session.store<Person>({ name: "FromDump" }, "people/dumped");
+            await session.saveChanges();
+        }
+        const dumpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ravendb-testdriver-dump-"));
+        const dumpFile = path.join(dumpDir, "source.ravendbdump");
+        const exportOperation = await sourceStore.smuggler.export(new DatabaseSmugglerExportOptions(), dumpFile);
+        await exportOperation.waitForCompletion();
+
+        // file path variant
+        const fileDriver = new RavenTestDriver({ databaseDumpFilePath: dumpFile });
+        try {
+            const store = await fileDriver.getDocumentStore(undefined, "dumpfile");
+            const session = store.openSession();
+            const person = await session.load<Person>("people/dumped");
+            expect(person?.name).toBe("FromDump");
+        } finally {
+            await fileDriver.dispose();
+        }
+
+        // stream variant
+        const streamDriver = new RavenTestDriver({ databaseDumpFileStream: fs.createReadStream(dumpFile) });
+        try {
+            const store = await streamDriver.getDocumentStore(undefined, "dumpstream");
+            const session = store.openSession();
+            const person = await session.load<Person>("people/dumped");
+            expect(person?.name).toBe("FromDump");
+        } finally {
+            await streamDriver.dispose();
+            fs.rmSync(dumpDir, { recursive: true, force: true });
         }
     });
 });

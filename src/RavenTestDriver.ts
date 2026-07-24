@@ -2,8 +2,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { pipeline } from "node:stream/promises";
 import {
     CreateDatabaseOperation,
+    DatabaseSmugglerImportOptions,
     DeleteDatabasesOperation,
     DocumentStore,
     GetIndexErrorsOperation,
@@ -118,7 +120,12 @@ export interface RavenTestDriverOptions {
     setupDatabase?: (store: IDocumentStore) => void | Promise<void>;
     /** .ravendbdump file imported into every new database. */
     databaseDumpFilePath?: string;
-    /** Readable stream with a .ravendbdump — buffered to a temp file on import. */
+    /**
+     * Readable stream with a .ravendbdump — buffered to a temp file on import.
+     * The stream is consumed by the first getDocumentStore() call; reusing the driver
+     * for more stores with a stream dump silently imports an empty dump — use
+     * databaseDumpFilePath for multi-store drivers.
+     */
     databaseDumpFileStream?: NodeJS.ReadableStream;
 }
 
@@ -153,6 +160,21 @@ export class RavenTestDriver implements AsyncDisposable {
     /** Called after the store is initialized — seed data here. */
     protected async setupDatabase(store: IDocumentStore): Promise<void> {
         await this._options.setupDatabase?.(store);
+    }
+
+    /** Path to a .ravendbdump imported into every new database. Override or set via constructor options. */
+    protected get databaseDumpFilePath(): string | null {
+        return this._options.databaseDumpFilePath ?? null;
+    }
+
+    /**
+     * Stream with a .ravendbdump imported into every new database (buffered to a temp file).
+     * The stream is consumed by the first getDocumentStore() call; reusing the driver
+     * for more stores with a stream dump silently imports an empty dump — use
+     * databaseDumpFilePath for multi-store drivers.
+     */
+    protected get databaseDumpFileStream(): NodeJS.ReadableStream | null {
+        return this._options.databaseDumpFileStream ?? null;
     }
 
     public static configureServer(options: TestServerOptions): void {
@@ -205,6 +227,8 @@ export class RavenTestDriver implements AsyncDisposable {
             });
             this._storeDisposals.set(store, disposalDone);
 
+            await this._importDatabase(store, name);
+
             await this.setupDatabase(store);
 
             if (options?.waitForIndexingTimeout !== undefined) {
@@ -230,6 +254,36 @@ export class RavenTestDriver implements AsyncDisposable {
             }
             await deleteDatabase(parentStore, name);
             throw error;
+        }
+    }
+
+    private async _importDatabase(store: IDocumentStore, database: string): Promise<void> {
+        const dumpPath = this.databaseDumpFilePath;
+        const dumpStream = this.databaseDumpFileStream;
+        if (!dumpPath && !dumpStream) {
+            return;
+        }
+
+        // node smuggler import() only accepts a file path — buffer streams to a temp file
+        let filePath = dumpPath;
+        let tempDir: string | null = null;
+        if (!filePath && dumpStream) {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ravendb-testdriver-dump-"));
+            filePath = path.join(tempDir, "dump.ravendbdump");
+        }
+
+        try {
+            if (tempDir && dumpStream) {
+                await pipeline(dumpStream, fs.createWriteStream(filePath!));
+            }
+
+            const operation = await store.smuggler.forDatabase(database)
+                .import(new DatabaseSmugglerImportOptions(), filePath!);
+            await operation.waitForCompletion();
+        } finally {
+            if (tempDir) {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            }
         }
     }
 
