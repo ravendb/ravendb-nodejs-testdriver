@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { DocumentStore, GetDatabaseNamesOperation } from "ravendb";
+import { DocumentStore, GetDatabaseNamesOperation, IndexDefinition, PutIndexesOperation } from "ravendb";
 import type { IDocumentStore } from "ravendb";
 import { RavenTestDriver, _disposeGlobalServer } from "../../src/RavenTestDriver";
 import { TestServerOptions } from "../../src/TestServerOptions";
@@ -196,6 +196,31 @@ describe("RavenTestDriver", () => {
             }
         } finally {
             await throwingDriver.dispose();
+        }
+    });
+
+    it("waitForIndexing waits until the index is not stale", async () => {
+        const store = await driver.getDocumentStore(undefined, "indexed");
+        {
+            const session = store.openSession();
+            await session.store({ name: "Alice", "@metadata": { "@collection": "People" } } as any, "people/1");
+            await session.store({ name: "Bob", "@metadata": { "@collection": "People" } } as any, "people/2");
+            await session.saveChanges();
+        }
+
+        const indexDefinition = new IndexDefinition();
+        indexDefinition.name = "People/ByName";
+        indexDefinition.maps = new Set(["from p in docs.People select new { p.name }"]);
+        await store.maintenance.send(new PutIndexesOperation(indexDefinition));
+
+        await driver.waitForIndexing(store);
+
+        {
+            const session = store.openSession();
+            const results = await session.query<Person>({ indexName: "People/ByName" })
+                .whereEquals("name", "Alice")
+                .all();
+            expect(results).toHaveLength(1);
         }
     });
 });

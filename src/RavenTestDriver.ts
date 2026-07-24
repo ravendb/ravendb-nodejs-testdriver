@@ -1,15 +1,32 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
     CreateDatabaseOperation,
     DeleteDatabasesOperation,
     DocumentStore,
+    GetIndexErrorsOperation,
+    GetStatisticsOperation,
 } from "ravendb";
-import type { DatabaseRecord, IDocumentStore } from "ravendb";
+import type { DatabaseRecord, IDocumentStore, IndexErrors } from "ravendb";
 import { EmbeddedServer, ServerOptions } from "ravendb-embedded";
 import { TestServerOptions } from "./TestServerOptions";
 import type { GetDocumentStoreOptions } from "./GetDocumentStoreOptions";
+
+const SIDE_BY_SIDE_INDEX_NAME_PREFIX = "ReplacementOf/";
+
+/** Builds the C#-style index error report appended to the waitForIndexing timeout message. */
+export function formatIndexErrors(errors: IndexErrors[]): string {
+    if (!errors || errors.length === 0) {
+        return "";
+    }
+    const blocks = errors.map(indexErrors => {
+        const errorsListText = indexErrors.errors.map(x => `- ${x.error}`).join("\n");
+        return `Index '${indexErrors.name}' (${indexErrors.errors.length} errors):\n${errorsListText}`;
+    });
+    return `Indexing errors:\n${blocks.join("\n")}`;
+}
 
 // ---- module-level state: the Node analogue of the C# statics ----------------
 
@@ -190,6 +207,10 @@ export class RavenTestDriver implements AsyncDisposable {
 
             await this.setupDatabase(store);
 
+            if (options?.waitForIndexingTimeout !== undefined) {
+                await this.waitForIndexing(store, name, options.waitForIndexingTimeout);
+            }
+
             this._documentStores.add(store);
 
             return store;
@@ -210,6 +231,35 @@ export class RavenTestDriver implements AsyncDisposable {
             await deleteDatabase(parentStore, name);
             throw error;
         }
+    }
+
+    public async waitForIndexing(store: IDocumentStore, database?: string, timeout = 60_000): Promise<void> {
+        const admin = database ? store.maintenance.forDatabase(database) : store.maintenance;
+
+        const start = Date.now();
+        while (Date.now() - start < timeout) {
+            const stats = await admin.send(new GetStatisticsOperation());
+            const indexes = stats.indexes.filter(x => x.state !== "Disabled");
+
+            if (indexes.every(x => !x.isStale && !x.name.startsWith(SIDE_BY_SIDE_INDEX_NAME_PREFIX))) {
+                return;
+            }
+
+            if (stats.indexes.some(x => x.state === "Error")) {
+                break;
+            }
+
+            await delay(100);
+        }
+
+        let errors: IndexErrors[] = [];
+        try {
+            errors = await admin.send(new GetIndexErrorsOperation());
+        } catch {
+            // the timeout error below is more useful than a failing error-fetch
+        }
+        const allIndexErrorsText = formatIndexErrors(errors);
+        throw new Error(`The indexes stayed stale for more than ${timeout} ms. ${allIndexErrorsText}`);
     }
 
     public async dispose(): Promise<void> {
