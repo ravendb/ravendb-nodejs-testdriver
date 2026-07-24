@@ -157,4 +157,45 @@ describe("RavenTestDriver", () => {
             await hookedDriver.dispose();
         }
     });
+
+    it("cleans up the orphaned database when a hook throws", async () => {
+        const hookError = new Error("setupDatabase intentionally failed");
+        const throwingDriver = new RavenTestDriver({
+            setupDatabase: async () => {
+                throw hookError;
+            }
+        });
+        try {
+            // Learn the server urls from the shared driver's own store so we can
+            // inspect the database list without depending on the throwing call
+            // ever returning a store.
+            const referenceStore = await driver.getDocumentStore();
+            const urls = referenceStore.urls;
+
+            await expect(throwingDriver.getDocumentStore(undefined, "hookthrow")).rejects.toThrow(
+                "setupDatabase intentionally failed"
+            );
+
+            const parent = new DocumentStore(urls, "");
+            parent.conventions.disableTopologyUpdates = true;
+            parent.initialize();
+            try {
+                // Cleanup is awaited before the rejection above, so this should
+                // already be true; poll briefly anyway to avoid flakiness.
+                let names: string[] = [];
+                for (let i = 0; i < 50; i++) {
+                    names = await parent.maintenance.server.send(new GetDatabaseNamesOperation(0, 200));
+                    if (!names.some((n) => n.startsWith("hookthrow_"))) {
+                        break;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                }
+                expect(names.some((n) => n.startsWith("hookthrow_"))).toBe(false);
+            } finally {
+                parent.dispose();
+            }
+        } finally {
+            await throwingDriver.dispose();
+        }
+    });
 });

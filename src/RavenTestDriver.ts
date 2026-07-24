@@ -53,6 +53,24 @@ function getGlobalStore(): Promise<IDocumentStore> {
 }
 
 /**
+ * Best-effort database deletion, shared by the normal afterDispose path and the
+ * getDocumentStore failure-cleanup path. Swallows "already gone"/"no leader"
+ * errors the same way both callers previously did inline.
+ */
+async function deleteDatabase(parentStore: IDocumentStore, name: string): Promise<void> {
+    try {
+        await parentStore.maintenance.server.send(new DeleteDatabasesOperation({ databaseNames: [name], hardDelete: true }));
+    } catch (err) {
+        const error = err as Error;
+        if (error.name === "DatabaseDoesNotExistException" || error.name === "NoLeaderException") {
+            return;
+        }
+        // eslint-disable-next-line no-console
+        console.error(`Failed to delete database '${name}':`, err);
+    }
+}
+
+/**
  * Test-only escape hatch: stops the per-process global server so test runners
  * exit cleanly. Not part of the public API (C# relies on process exit).
  */
@@ -139,49 +157,59 @@ export class RavenTestDriver implements AsyncDisposable {
 
         await parentStore.maintenance.server.send(new CreateDatabaseOperation(databaseRecord));
 
-        const store = new DocumentStore(parentStore.urls, name);
-        store.conventions.disableTopologyUpdates = true;
+        let store: IDocumentStore | undefined;
+        try {
+            store = new DocumentStore(parentStore.urls, name);
+            store.conventions.disableTopologyUpdates = true;
 
-        await this.preInitialize(store);
+            await this.preInitialize(store);
 
-        store.initialize();
+            store.initialize();
 
-        // Created up front (at registration time) so dispose() can await it —
-        // DocumentStore.dispose() is fire-and-forget and "afterDispose" fires
-        // at least a couple of microtask hops later, so a promise populated only
-        // inside the event handler would still be unset by the time dispose()
-        // reaches its await, letting the deletion race server teardown.
-        const disposalDone = new Promise<void>((resolve) => {
-            store.once("afterDispose", (callback: () => void) => {
-                const finish = () => {
-                    this._storeDisposals.delete(store);
-                    resolve();
-                    callback();
-                };
-                if (!this._documentStores.delete(store)) {
-                    finish();
-                    return;
-                }
-                parentStore.maintenance.server
-                    .send(new DeleteDatabasesOperation({ databaseNames: [name], hardDelete: true }))
-                    .then(() => undefined)
-                    .catch((err: Error) => {
-                        if (err.name === "DatabaseDoesNotExistException" || err.name === "NoLeaderException") {
-                            return;
-                        }
-                        // eslint-disable-next-line no-console
-                        console.error(`Failed to delete database '${name}':`, err);
-                    })
-                    .finally(finish);
+            // Created up front (at registration time) so dispose() can await it —
+            // DocumentStore.dispose() is fire-and-forget and "afterDispose" fires
+            // at least a couple of microtask hops later, so a promise populated only
+            // inside the event handler would still be unset by the time dispose()
+            // reaches its await, letting the deletion race server teardown.
+            const currentStore = store;
+            const disposalDone = new Promise<void>((resolve) => {
+                currentStore.once("afterDispose", (callback: () => void) => {
+                    const finish = () => {
+                        this._storeDisposals.delete(currentStore);
+                        resolve();
+                        callback();
+                    };
+                    if (!this._documentStores.delete(currentStore)) {
+                        finish();
+                        return;
+                    }
+                    deleteDatabase(parentStore, name).finally(finish);
+                });
             });
-        });
-        this._storeDisposals.set(store, disposalDone);
+            this._storeDisposals.set(store, disposalDone);
 
-        await this.setupDatabase(store);
+            await this.setupDatabase(store);
 
-        this._documentStores.add(store);
+            this._documentStores.add(store);
 
-        return store;
+            return store;
+        } catch (error) {
+            // A hook (preInitialize/setupDatabase) threw after the database was
+            // already created server-side. Since the store was never added to
+            // _documentStores/returned, nobody can dispose it and the afterDispose
+            // deletion never fires — clean up here so the database isn't orphaned.
+            if (store) {
+                this._documentStores.delete(store);
+                this._storeDisposals.delete(store);
+                try {
+                    store.dispose();
+                } catch {
+                    // store may not have been initialized yet — ignore
+                }
+            }
+            await deleteDatabase(parentStore, name);
+            throw error;
+        }
     }
 
     public async dispose(): Promise<void> {
