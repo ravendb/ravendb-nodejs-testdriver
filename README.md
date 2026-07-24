@@ -1,0 +1,101 @@
+# ravendb-test-driver
+
+RavenDB test driver for Node.js — the port of [Raven.TestDriver](https://ravendb.net/docs/article-page/latest/csharp/start/test-driver) (C#).
+Starts one embedded RavenDB server per test process and hands out an isolated, auto-deleted database per `getDocumentStore()` call.
+
+Built on `ravendb-embedded` (currently consumed from a packed tarball; will move to the npm registry once released). This package is private and is not published to npm — it's consumed directly from a git checkout or tarball.
+
+## Install
+
+```bash
+pnpm add -D ./ravendb-embedded-<version>.tgz ravendb-test-driver
+```
+
+`ravendb` (the RavenDB client) is a peer dependency — install it alongside if it isn't already in the project.
+
+## Usage (vitest)
+
+```ts
+import { afterAll, describe, expect, it } from "vitest";
+import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
+
+// Once per test process, before the first getDocumentStore() call.
+RavenTestDriver.configureServer(new TestServerOptions({
+    licensing: {
+        eulaAccepted: true,
+        license: process.env.RAVEN_LICENSE,
+    },
+}));
+
+const driver = new RavenTestDriver({
+    setupDatabase: async (store) => {
+        const session = store.openSession();
+        await session.store({ name: "Grisha" }, "people/1");
+        await session.saveChanges();
+    },
+});
+
+afterAll(async () => {
+    await driver.dispose();
+});
+
+describe("people", () => {
+    it("loads seeded data", async () => {
+        const store = await driver.getDocumentStore();
+        const session = store.openSession();
+        const person = await session.load("people/1");
+        expect(person?.name).toBe("Grisha");
+    });
+});
+```
+
+Subclassing works too (the C# pattern): override `preInitialize`, `preConfigureDatabase`, `setupDatabase`, or the `databaseDumpFilePath` / `databaseDumpFileStream` getters.
+
+## One server per test run
+
+The driver keeps one embedded RavenDB server per Node process (a module-level singleton, analogous to the C# driver's static server). Every `getDocumentStore()` call creates a fresh, isolated database against that same server and deletes it when the returned store is disposed.
+
+Because the server lives at module scope, test runners that spawn one worker process per file (vitest's and jest's default) end up starting one server per file instead of one per run. This repo's own `vitest.config.ts` avoids that by forcing a single worker process:
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+    test: {
+        pool: "forks",
+        fileParallelism: false,
+        // ...
+    },
+});
+```
+
+(`poolOptions.forks.singleFork` doesn't apply here — Vitest 4 removed it. `pool: "forks"` combined with `fileParallelism: false` is the equivalent: a single fork runs every test file sequentially, so the module-level server survives across files.)
+
+With Jest, the equivalent is running the suite in a single worker process, e.g. `jest --runInBand`.
+
+If you need multiple concurrent servers instead (e.g. to parallelize across workers), use `driver.configureScopedServer(options)` to give an individual `RavenTestDriver` instance its own embedded server rather than sharing the process-wide one.
+
+## License / EULA
+
+`TestServerOptions` matches the C# driver's defaults: `licensing.throwOnInvalidOrMissingLicense` is `true` unless you explicitly set it in the constructor init.
+
+- `licensing.eulaAccepted = true` is required for the embedded server to auto-download the RavenDB server binaries.
+- Provide a license via `licensing.license` (inline string) or `licensing.licensePath` (path to a license file).
+- This repo's own integration tests read the license from the `RAVEN_LICENSE` / `RAVEN_LICENSE_PATH` environment variables (see `test/testOptions.ts`); when neither is set, they fall back to `throwOnInvalidOrMissingLicense = false` so the suite can still run unlicensed locally.
+
+## API
+
+- `RavenTestDriver.configureServer(options)` — configures the shared per-process server. Must run before the first `getDocumentStore()`; throws if called afterward.
+- `driver.getDocumentStore(options?, database = "test")` — creates a new isolated database and returns a store for it; the database is deleted when the store is disposed. `options.waitForIndexingTimeout` waits for indexing to settle before returning.
+- `driver.waitForIndexing(store, database?, timeoutMs?)` — waits until all indexes are non-stale, throwing (with index error details) on timeout.
+- `driver.waitForUserToContinueTheTest(store)` — opens RavenDB Studio for the store's database and resumes once you create a `Debug/Done` document from Studio.
+  **Warning:** this blocks forever until that document appears — it never resumes on its own (unlike the C# version, it cannot detect an attached debugger). Treat it as an interactive/debug-only helper and never leave a call to it in committed test code, or CI will hang indefinitely.
+- `driver.dispose()` — disposes all stores handed out by this driver (and any scoped server). Also available via `await using driver = new RavenTestDriver()` (TypeScript 5.2+ / `ESNext.Disposable` lib, since `RavenTestDriver` implements `AsyncDisposable`).
+
+## Testing this package
+
+```bash
+pnpm build
+pnpm test
+```
+
+`pnpm test:unit` and `pnpm test:integration` run the two suites separately. Integration tests spin up a real embedded server, so they need a RavenDB license (or `RAVEN_LICENSE`/`RAVEN_LICENSE_PATH` unset, which runs unlicensed).
