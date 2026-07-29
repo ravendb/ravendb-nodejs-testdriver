@@ -30,8 +30,9 @@ pnpm add -D /path/to/ravendb-embedded-<version>.tgz /path/to/ravendb-test-driver
 import { afterAll, describe, expect, it } from "vitest";
 import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
 
-// Once per test process, before the first getDocumentStore() call.
-RavenTestDriver.configureServer(new TestServerOptions({
+// Safe to call from every test file: first registration wins, later calls
+// are no-ops, and the factory runs once when the server actually starts.
+RavenTestDriver.configureServerOnce(() => new TestServerOptions({
     licensing: {
         eulaAccepted: true,
         license: process.env.RAVEN_LICENSE,
@@ -96,6 +97,7 @@ If you need multiple concurrent servers instead (e.g. to parallelize across work
 ## API
 
 - `RavenTestDriver.configureServer(options)` — configures the shared per-process server. Must run before the first `getDocumentStore()`; throws if called afterward.
+- `RavenTestDriver.configureServerOnce(factory)` — idempotent variant for setup code that runs once per test file: the first registered factory wins and every later call (even after the server started) is a no-op, so callers don't need their own "already configured" guard. The factory runs lazily, at most once, when the server actually starts — side effects like `mkdtempSync` or reading a license file don't repeat per file. An explicit `configureServer` call before start overrides a pending factory.
 - `driver.getDocumentStore(options?, database = "test")` — creates a new isolated database and returns a store for it; the database is deleted when the store is disposed. `options.waitForIndexingTimeout` waits for indexing to settle before returning.
 - `driver.waitForIndexing(store, database?, timeoutMs?)` — waits until all indexes are non-stale, throwing (with index error details) on timeout.
 - `driver.waitForUserToContinueTheTest(store)` — opens RavenDB Studio for the store's database and resumes once you create a `Debug/Done` document from Studio.

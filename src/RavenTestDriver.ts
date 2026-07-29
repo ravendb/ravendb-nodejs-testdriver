@@ -38,6 +38,16 @@ export function formatIndexErrors(errors: IndexErrors[]): string {
 let globalServer: EmbeddedServer | null = null;
 let globalStorePromise: Promise<IDocumentStore> | null = null;
 let globalServerOptions: TestServerOptions | null = null;
+let globalServerOptionsFactory: (() => TestServerOptions) | null = null;
+
+/** Materializes a pending configureServerOnce factory (invoked at most once, at server start). */
+function resolveGlobalServerOptions(): TestServerOptions | null {
+    if (!globalServerOptions && globalServerOptionsFactory) {
+        globalServerOptions = globalServerOptionsFactory();
+        globalServerOptionsFactory = null;
+    }
+    return globalServerOptions;
+}
 let databaseIndex = 0;
 let emptySettingsFilePath: string | null = null;
 
@@ -69,7 +79,7 @@ async function startServerAndCreateStore(server: EmbeddedServer, options: Server
 function getGlobalStore(): Promise<IDocumentStore> {
     if (!globalStorePromise) {
         globalServer = new EmbeddedServer();
-        globalStorePromise = startServerAndCreateStore(globalServer, globalServerOptions ?? new TestServerOptions());
+        globalStorePromise = startServerAndCreateStore(globalServer, resolveGlobalServerOptions() ?? new TestServerOptions());
     }
     return globalStorePromise;
 }
@@ -112,6 +122,7 @@ export async function _disposeGlobalServer(): Promise<void> {
         globalServer = null;
     }
     globalServerOptions = null;
+    globalServerOptionsFactory = null;
 }
 
 // ---- driver -----------------------------------------------------------------
@@ -192,6 +203,23 @@ export class RavenTestDriver implements AsyncDisposable {
                 "Please call 'configureServer' method before any 'getDocumentStore' is called.");
         }
         globalServerOptions = options;
+        globalServerOptionsFactory = null;
+    }
+
+    /**
+     * Idempotent alternative to configureServer for test setups that run once
+     * per test file: the first registered factory wins, every later call —
+     * including calls made after the server has started — is a no-op. The
+     * factory is invoked lazily, at most once, when the global server starts,
+     * so side effects (temp directories, reading license files) don't repeat
+     * per file. An explicit configureServer call before the server starts
+     * overrides a pending factory.
+     */
+    public static configureServerOnce(factory: () => TestServerOptions): void {
+        if (globalStorePromise || globalServerOptions || globalServerOptionsFactory) {
+            return;
+        }
+        globalServerOptionsFactory = factory;
     }
 
     /**
@@ -224,7 +252,7 @@ export class RavenTestDriver implements AsyncDisposable {
 
     private _getScopedStore(): Promise<IDocumentStore> {
         if (!this._scopedStorePromise) {
-            const options = this._scopedServerOptions ?? globalServerOptions ?? new TestServerOptions();
+            const options = this._scopedServerOptions ?? resolveGlobalServerOptions() ?? new TestServerOptions();
             this._scopedStorePromise = startServerAndCreateStore(this._scopedServer!, options);
         }
         return this._scopedStorePromise;
@@ -360,6 +388,10 @@ export class RavenTestDriver implements AsyncDisposable {
     }
 
     public async waitForIndexing(store: IDocumentStore, database?: string, timeout = 60_000): Promise<void> {
+        if (!store) {
+            throw new Error(
+                "waitForIndexing requires a document store - did you pass an uninitialized variable?");
+        }
         const admin = database ? store.maintenance.forDatabase(database) : store.maintenance;
 
         const start = Date.now();
@@ -394,6 +426,10 @@ export class RavenTestDriver implements AsyncDisposable {
      * Unlike C#, this cannot detect an attached debugger — it always waits.
      */
     public async waitForUserToContinueTheTest(store: IDocumentStore): Promise<void> {
+        if (!store) {
+            throw new Error(
+                "waitForUserToContinueTheTest requires a document store - did you pass an uninitialized variable?");
+        }
         const databaseNameEncoded = encodeURIComponent(store.database);
         const documentsPage = store.urls[0]
             + "/studio/index.html#databases/documents?&database=" + databaseNameEncoded + "&withStop=true";
