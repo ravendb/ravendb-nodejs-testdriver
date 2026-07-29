@@ -82,9 +82,32 @@ export default defineConfig({
 
 (`poolOptions.forks.singleFork` doesn't apply here — Vitest 4 removed it. `pool: "forks"` combined with `fileParallelism: false` is the equivalent: a single fork runs every test file sequentially, so the module-level server survives across files.)
 
-With Jest, the equivalent is running the suite in a single worker process, e.g. `jest --runInBand`.
-
 If you need multiple concurrent servers instead (e.g. to parallelize across workers), see the "Internal/advanced" note below.
+
+### Jest
+
+With Jest, the single-worker equivalent is `--runInBand`, and two more caveats apply (a working setup is the [nestjs-ravendb-example](https://github.com/ravendb/nestjs-ravendb-example) repo):
+
+- **`--experimental-vm-modules` is required.** The `ravendb` client loads `undici` through a dynamic `await import()`, which Jest's VM sandbox only supports behind that Node flag. Without it every request fails with a 503-wrapped dispatcher assertion. Run Jest as:
+
+  ```json
+  {
+    "scripts": {
+      "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
+    }
+  }
+  ```
+
+- **Stop the server explicitly or Jest hangs after a green run.** The embedded server deliberately survives `driver.dispose()` so it can be reused across test files, and is normally cleaned up at process exit. Jest runs tests in-process, so the Raven.Server child-process handle keeps the event loop alive and Jest never exits. Call `RavenTestDriver.stopServer()` once after the whole suite — in the last `afterAll` or a Jest `globalTeardown`:
+
+  ```ts
+  afterAll(async () => {
+      await driver.dispose();
+      await RavenTestDriver.stopServer();
+  });
+  ```
+
+Vitest with `pool: "forks"` needs neither: the fork loads `undici` natively and exits cleanly, which is why the vitest example above stops at `driver.dispose()`.
 
 ## License / EULA
 
@@ -98,6 +121,7 @@ If you need multiple concurrent servers instead (e.g. to parallelize across work
 
 - `RavenTestDriver.configureServer(options)` — configures the shared per-process server. Must run before the first `getDocumentStore()`; throws if called afterward.
 - `RavenTestDriver.configureServerOnce(factory)` — idempotent variant for setup code that runs once per test file: the first registered factory wins and every later call (even after the server started) is a no-op, so callers don't need their own "already configured" guard. The factory runs lazily, at most once, when the server actually starts — side effects like `mkdtempSync` or reading a license file don't repeat per file. An explicit `configureServer` call before start overrides a pending factory.
+- `RavenTestDriver.stopServer()` — stops the shared per-process server (no-op if none was started) and resets its configuration so `configureServer` can be called again. Usually unnecessary — the server is reclaimed at process exit — but required with in-process runners like Jest (see the "Jest" section above).
 - `driver.getDocumentStore(options?, database = "test")` — creates a new isolated database and returns a store for it; the database is deleted when the store is disposed. `options.waitForIndexingTimeout` waits for indexing to settle before returning.
 - `driver.waitForIndexing(store, database?, timeoutMs?)` — waits until all indexes are non-stale, throwing (with index error details) on timeout.
 - `driver.waitForUserToContinueTheTest(store)` — opens RavenDB Studio for the store's database and resumes once you create a `Debug/Done` document from Studio.

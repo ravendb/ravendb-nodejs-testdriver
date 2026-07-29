@@ -105,8 +105,8 @@ async function deleteDatabase(parentStore: IDocumentStore, name: string): Promis
 }
 
 /**
- * Test-only escape hatch: stops the per-process global server so test runners
- * exit cleanly. Not part of the public API (C# relies on process exit).
+ * @deprecated Use the public {@link RavenTestDriver.stopServer} instead.
+ * Kept as a named export for callers that imported it before stopServer existed.
  */
 export async function _disposeGlobalServer(): Promise<void> {
     if (globalStorePromise) {
@@ -220,6 +220,21 @@ export class RavenTestDriver implements AsyncDisposable {
             return;
         }
         globalServerOptionsFactory = factory;
+    }
+
+    /**
+     * Stops the shared per-process embedded server (started lazily by the first
+     * getDocumentStore() call) and resets its configuration, so configureServer()
+     * may be called again. No-op when no server was started.
+     *
+     * The server normally survives driver.dispose() on purpose — it is reused
+     * across test files and cleaned up at process exit. Test runners that keep
+     * the test process alive on open handles (Jest in-process workers) need this
+     * called once after the whole suite, e.g. in a final afterAll or a Jest
+     * globalTeardown, or the runner hangs after a green run.
+     */
+    public static async stopServer(): Promise<void> {
+        await _disposeGlobalServer();
     }
 
     /**

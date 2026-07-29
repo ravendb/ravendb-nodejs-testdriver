@@ -10,7 +10,7 @@ import {
     PutIndexesOperation,
 } from "ravendb";
 import type { IDocumentStore } from "ravendb";
-import { RavenTestDriver, _disposeGlobalServer } from "../../src/RavenTestDriver";
+import { RavenTestDriver } from "../../src/RavenTestDriver";
 import { TestServerOptions } from "../../src/TestServerOptions";
 import { createTestServerOptions } from "../testOptions";
 
@@ -25,7 +25,7 @@ describe("RavenTestDriver", () => {
 
     afterAll(async () => {
         await driver.dispose();
-        await _disposeGlobalServer();
+        await RavenTestDriver.stopServer();
     });
 
     it("stores and loads a document", async () => {
