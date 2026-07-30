@@ -49,13 +49,12 @@
     "ravendb": "^7.0.0"
   },
   "dependencies": {
-    "ravendb-embedded": "file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz"
+    "ravendb-embedded": "^7.2.5"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "ravendb": "^7.2.6",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
-  },
-  "private": true
+  }
 }

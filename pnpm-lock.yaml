@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       ravendb-embedded:
-        specifier: file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz
-        version: file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz(ravendb@7.2.6)
+        specifier: ^7.2.5
+        version: 7.2.5(ravendb@7.2.6)
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
@@ -456,9 +456,9 @@ packages:
     resolution: {integrity: sha512-KBDEIpLrvpv16pp3K0Fw+UCoZfopFjjgeB+0tA/aaThfEE74kKDLrgg603YvOWJyg3+WYtyq3xYsQWsIyZlPqQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  ravendb-embedded@file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz:
-    resolution: {integrity: sha512-WrYhypwXVXJDKW3NoTUz1vf1jGymR0Y6TQyqFvF2+f0uftIKce+vr3wd7E0ehivtrvg8AUKQfk+EaBtMLud2ew==, tarball: file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz}
-    version: 7.2.5
+  ravendb-embedded@7.2.5:
+    resolution: {integrity: sha512-qd8jyIUi8llVw6wTiB8/oNsUpdqXORCVEwmMlu3+uVKxDCk9bVVd6Cge5x4FStSXb4U4V3O4d85yKXhrKLxzbA==}
+    engines: {node: '>=22.0.0'}
     hasBin: true
     peerDependencies:
       ravendb: ^7.0.0
@@ -925,7 +925,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  ravendb-embedded@file:../ravendb-nodejs-embedded/ravendb-embedded-7.2.5.tgz(ravendb@7.2.6):
+  ravendb-embedded@7.2.5(ravendb@7.2.6):
     dependencies:
       ravendb: 7.2.6
 
