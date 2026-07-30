@@ -1,0 +1,71 @@
+# ravendb-test-driver examples
+
+Three self-contained example projects, one per test runner. Each covers the same
+six scenarios with the same test bodies, so the diff between folders is the runner
+setup — not the driver usage.
+
+| Runner | Folder | Setup needed | Servers per run | Suite time |
+| --- | --- | --- | --- | --- |
+| **vitest** | [vitest/](vitest) | `pool: "forks"` + `fileParallelism: false` | 1 | ~43s |
+| **mocha** | [mocha/](mocha) | No `--parallel`; one `after` hook calling `stopServer()` | 1 | ~20s |
+| **jest** | [jest/](jest) | `--experimental-vm-modules`, `--runInBand`, `stopServer()` **per file** | 1 per file | ~80s |
+
+Start with [vitest/](vitest) if you have no runner preference: it needs the least
+setup.
+
+## Run any of them
+
+```bash
+cd vitest && npm install && npm test
+```
+
+Each folder depends on the driver via `"ravendb-test-driver": "file:../.."`, so
+build the package at the repo root first:
+
+```bash
+pnpm build
+```
+
+The first run downloads the RavenDB server binaries — expect a few minutes. Set
+`RAVEN_LICENSE` (inline license JSON) or `RAVEN_LICENSE_PATH` (path to a license
+file) to run licensed; with neither set, the server runs unlicensed.
+
+## Scenarios
+
+| # | Shows |
+| --- | --- |
+| 01 | Minimal setup; store / load / update / delete |
+| 02 | A fresh database per store, name prefixes, `await using` |
+| 03 | `setupDatabase`, `preInitialize`, `preConfigureDatabase`; subclassing |
+| 04 | `waitForIndexing`, `waitForIndexingTimeout`, querying a static index |
+| 05 | Seeding from a `.ravendbdump` via file path and stream |
+| 06 | `configureServerOnce` vs `configureServer`, lazy start, server reuse |
+
+Each folder also has a `serverOptions.ts` with the shared `TestServerOptions`
+(temp data/logs directories, EULA accepted, license read from the environment).
+
+## The one thing every runner has to get right
+
+The driver keeps its embedded server in a module-level singleton, so there is one
+server per *module registry*, started lazily by the first `getDocumentStore()`
+call. It deliberately outlives `driver.dispose()` so test files can share it.
+
+Two consequences, and each runner handles them differently:
+
+1. **Sharing one server across files** requires files to share a process *and* a
+   module registry. Vitest needs `pool: "forks"` + `fileParallelism: false`; Mocha
+   gets it by default (without `--parallel`); Jest cannot — it isolates the
+   registry per file, so each file gets its own server even under `--runInBand`.
+2. **In-process runners hang after a green run**, because the live Raven.Server
+   child-process handle keeps the event loop alive. Both Jest and Mocha need
+   `RavenTestDriver.stopServer()`. Mocha needs it once, in a single top-level
+   `after`; Jest needs it in *every file's* `afterAll` — a `globalTeardown` runs in
+   a different module registry and would stop nothing. Vitest needs neither: the
+   fork exits and takes the server with it.
+
+Also worth knowing: `ts-jest` and `ts-node` both cap their TypeScript peer below
+7, so the jest and mocha examples pin TypeScript 5.9 while the driver itself
+builds on TypeScript 7. Each folder's README says so.
+
+Each folder's README explains its own version of this, plus one Jest-only caveat
+(the client's dynamic `import()` versus Jest's VM sandbox).

@@ -1,0 +1,10 @@
+{
+  "//require": "ts-node/register compiles the TypeScript specs.",
+  "require": ["ts-node/register"],
+  "spec": "test/**/*.test.ts",
+
+  "//timeout": "Starting (and on the first run, downloading) the embedded server blows past Mocha's 2s default.",
+  "timeout": 300000,
+
+  "//parallel": "Leave --parallel off: Mocha then runs every file in one process, so the driver's module-level server is shared across files, which is what you want."
+}

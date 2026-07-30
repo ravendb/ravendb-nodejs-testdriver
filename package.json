@@ -41,6 +41,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepare": "npm run build",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration"
