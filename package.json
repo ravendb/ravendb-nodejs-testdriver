@@ -1,11 +1,44 @@
 {
   "name": "ravendb-test-driver",
-  "version": "7.2.0",
-  "description": "RavenDB test driver for Node.js — spins up an embedded RavenDB server and hands out isolated per-test document stores",
+  "version": "7.2.5",
+  "description": "RavenDB test driver for Node.js: spins up an embedded RavenDB server and hands out isolated per-test document stores",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
-  "engines": { "node": ">=20" },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "ravendb",
+    "test-driver",
+    "embedded",
+    "database",
+    "nosql",
+    "document-database",
+    "document-store",
+    "testing",
+    "integration-testing",
+    "vitest",
+    "jest",
+    "mocha",
+    "in-memory"
+  ],
+  "author": "RavenDB <support@ravendb.net> (https://ravendb.net)",
+  "contributors": [
+    "Hibernating Rhinos (https://hibernatingrhinos.com)",
+    "RavenDB (https://ravendb.net)"
+  ],
+  "license": "MIT",
+  "homepage": "https://ravendb.net",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ravendb/ravendb-nodejs-testdriver.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ravendb/ravendb-nodejs-testdriver/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -20,8 +53,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
-    "ravendb": "^7.2.5",
-    "typescript": "^5.5.3",
+    "ravendb": "^7.2.6",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "private": true
