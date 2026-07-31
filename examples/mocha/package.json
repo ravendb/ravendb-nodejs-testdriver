@@ -1,8 +1,8 @@
 {
-  "name": "ravendb-test-driver-example-mocha",
+  "name": "ravendb-testdriver-example-mocha",
   "private": true,
   "version": "0.0.0",
-  "description": "ravendb-test-driver examples for mocha",
+  "description": "ravendb-testdriver examples for mocha",
   "license": "MIT",
   "scripts": {
     "test": "mocha"
@@ -12,7 +12,7 @@
     "@types/node": "^26.1.1",
     "mocha": "^11.7.6",
     "ravendb": "^7.2.6",
-    "ravendb-test-driver": "file:../..",
+    "ravendb-testdriver": "file:../..",
     "typescript": "~5.9.0",
     "ts-node": "^10.9.2"
   }

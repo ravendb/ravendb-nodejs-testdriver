@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { X509Certificate } from "node:crypto";
-import { TestServerOptions } from "ravendb-test-driver";
+import { TestServerOptions } from "ravendb-testdriver";
 
 /** examples/certs, shared by every runner's secured example. */
 const certsDir = path.resolve(__dirname, "../../certs");

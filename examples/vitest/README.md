@@ -1,4 +1,4 @@
-# ravendb-test-driver with vitest
+# ravendb-testdriver with vitest
 
 Runnable examples. Vitest needs the least setup of the three runners: no VM-sandbox
 workaround, no explicit server teardown.

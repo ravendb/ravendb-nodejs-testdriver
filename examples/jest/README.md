@@ -1,4 +1,4 @@
-# ravendb-test-driver with jest
+# ravendb-testdriver with jest
 
 Runnable examples — the same six scenarios as the [vitest](../vitest) and
 [mocha](../mocha) folders, so you can diff the setup rather than the test logic.

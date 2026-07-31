@@ -7,7 +7,7 @@
  * prefix still yields distinct databases.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import type { Person } from "./model";
 

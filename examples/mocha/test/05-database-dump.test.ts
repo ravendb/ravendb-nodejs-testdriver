@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSmugglerExportOptions } from "ravendb";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import type { Person } from "./model";
 

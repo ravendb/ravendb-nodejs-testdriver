@@ -1,8 +1,8 @@
 {
-  "name": "ravendb-test-driver-example-vitest",
+  "name": "ravendb-testdriver-example-vitest",
   "private": true,
   "version": "0.0.0",
-  "description": "ravendb-test-driver examples for vitest",
+  "description": "ravendb-testdriver examples for vitest",
   "license": "MIT",
   "scripts": {
     "test": "vitest run"
@@ -10,7 +10,7 @@
   "devDependencies": {
     "@types/node": "^26.1.1",
     "ravendb": "^7.2.6",
-    "ravendb-test-driver": "file:../..",
+    "ravendb-testdriver": "file:../..",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }

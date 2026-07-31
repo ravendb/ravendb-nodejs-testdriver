@@ -20,7 +20,7 @@
  *    running).
  */
 import * as assert from "node:assert/strict";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createSecuredServerOptions } from "./securedServerOptions";
 import type { Person } from "./model";
 

@@ -1,4 +1,4 @@
-# ravendb-test-driver examples
+# ravendb-testdriver examples
 
 Three self-contained example projects, one per test runner. Each covers the same
 six scenarios with the same test bodies, so the diff between folders is the runner
@@ -19,7 +19,7 @@ setup.
 cd vitest && npm install && npm test
 ```
 
-Each folder depends on the driver via `"ravendb-test-driver": "file:../.."`, so
+Each folder depends on the driver via `"ravendb-testdriver": "file:../.."`, so
 build the package at the repo root first:
 
 ```bash

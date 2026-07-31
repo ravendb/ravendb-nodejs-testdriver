@@ -14,7 +14,7 @@
  * unsecured server's toes, and stops the server afterwards.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createSecuredServerOptions } from "./securedServerOptions";
 import type { Person } from "./model";
 

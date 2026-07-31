@@ -7,7 +7,7 @@
  * prefix still yields distinct databases.
  */
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import { stopServerAfterAll } from "./stopServerAfterAll";
 import type { Person } from "./model";

@@ -8,7 +8,7 @@
  */
 import * as assert from "node:assert/strict";
 import type { IDocumentStore } from "ravendb";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import type { Person } from "./model";
 

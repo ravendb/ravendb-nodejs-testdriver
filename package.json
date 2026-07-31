@@ -1,5 +1,5 @@
 {
-  "name": "ravendb-test-driver",
+  "name": "ravendb-testdriver",
   "version": "7.2.5",
   "description": "RavenDB test driver for Node.js: spins up an embedded RavenDB server and hands out isolated per-test document stores",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
   ],
   "keywords": [
     "ravendb",
-    "test-driver",
+    "testdriver",
     "embedded",
     "database",
     "nosql",

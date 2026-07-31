@@ -22,7 +22,7 @@
  * shared server" below means shared within this file, not across the run.
  */
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
+import { RavenTestDriver, TestServerOptions } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import { stopServerAfterAll } from "./stopServerAfterAll";
 

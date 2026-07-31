@@ -1,4 +1,4 @@
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 
 /**
  * Required for Mocha. The embedded server deliberately outlives

@@ -17,7 +17,7 @@
  *    Mocha, which otherwise hang on the live child-process handle.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
+import { RavenTestDriver, TestServerOptions } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 
 // The call every example file makes. Safe to repeat across files.

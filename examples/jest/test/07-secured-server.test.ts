@@ -14,7 +14,7 @@
  * cannot collide with the unsecured ones.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createSecuredServerOptions } from "./securedServerOptions";
 import { stopServerAfterAll } from "./stopServerAfterAll";
 import type { Person } from "./model";

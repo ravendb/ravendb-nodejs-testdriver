@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { IDocumentStore } from "ravendb";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import { stopServerAfterAll } from "./stopServerAfterAll";
 import type { Person } from "./model";

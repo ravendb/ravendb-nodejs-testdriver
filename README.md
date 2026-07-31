@@ -1,4 +1,4 @@
-# ravendb-test-driver
+# ravendb-testdriver
 
 RavenDB test driver for Node.js.
 Starts one embedded RavenDB server per test process and hands out an isolated, auto-deleted database per `getDocumentStore()` call.
@@ -6,17 +6,17 @@ Starts one embedded RavenDB server per test process and hands out an isolated, a
 ## Install
 
 ```bash
-npm install --save-dev ravendb-test-driver
+npm install --save-dev ravendb-testdriver
 ```
 
 or with pnpm / yarn:
 
 ```bash
-pnpm add -D ravendb-test-driver
+pnpm add -D ravendb-testdriver
 ```
 
 ```bash
-yarn add -D ravendb-test-driver
+yarn add -D ravendb-testdriver
 ```
 
 Requires Node.js >= 22.
@@ -25,7 +25,7 @@ Requires Node.js >= 22.
 
 ```ts
 import { afterAll, describe, expect, it } from "vitest";
-import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
+import { RavenTestDriver, TestServerOptions } from "ravendb-testdriver";
 
 // Safe to call from every test file: first registration wins, later calls
 // are no-ops, and the factory runs once when the server actually starts.
@@ -183,7 +183,7 @@ Mocha runs every test file in one process by default, so the shared server alrea
 
   ```ts
   import * as assert from "node:assert/strict";
-  import { RavenTestDriver, TestServerOptions } from "ravendb-test-driver";
+  import { RavenTestDriver, TestServerOptions } from "ravendb-testdriver";
 
   RavenTestDriver.configureServerOnce(() => new TestServerOptions({
       licensing: {

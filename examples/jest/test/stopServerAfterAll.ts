@@ -1,5 +1,5 @@
 import { afterAll } from "@jest/globals";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 
 /**
  * Required for Jest, and it must be called from every test file.

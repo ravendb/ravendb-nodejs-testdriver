@@ -11,7 +11,7 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { AbstractJavaScriptIndexCreationTask } from "ravendb";
-import { RavenTestDriver } from "ravendb-test-driver";
+import { RavenTestDriver } from "ravendb-testdriver";
 import { createServerOptions } from "./serverOptions";
 import type { Product } from "./model";
 

@@ -1,8 +1,8 @@
 {
-  "name": "ravendb-test-driver-example-jest",
+  "name": "ravendb-testdriver-example-jest",
   "private": true,
   "version": "0.0.0",
-  "description": "ravendb-test-driver examples for jest",
+  "description": "ravendb-testdriver examples for jest",
   "license": "MIT",
   "scripts": {
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
@@ -12,7 +12,7 @@
     "@types/node": "^26.1.1",
     "jest": "^30.2.0",
     "ravendb": "^7.2.6",
-    "ravendb-test-driver": "file:../..",
+    "ravendb-testdriver": "file:../..",
     "ts-jest": "^29.4.7",
     "typescript": "~5.9.0"
   }
