@@ -1,8 +1,8 @@
 # ravendb-testdriver examples
 
 Three self-contained example projects, one per test runner. Each covers the same
-six scenarios with the same test bodies, so the diff between folders is the runner
-setup — not the driver usage.
+seven scenarios with the same test bodies, so the diff between folders is the
+runner setup, not the driver usage.
 
 | Runner | Folder | Setup needed | Servers per run | Suite time |
 | --- | --- | --- | --- | --- |

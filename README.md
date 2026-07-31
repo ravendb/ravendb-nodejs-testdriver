@@ -62,15 +62,15 @@ Subclassing works too: override `preInitialize`, `preConfigureDatabase`, `setupD
 
 ## Examples
 
-[`examples/`](examples) holds three standalone, runnable projects — one per test runner. Each covers the same six scenarios with the same test bodies, so the difference between folders is the runner setup, not the driver usage.
+[`examples/`](examples) holds three standalone, runnable projects, one per test runner. Each covers the same seven scenarios with the same test bodies, so the difference between folders is the runner setup, not the driver usage.
 
 | Runner | Folder | Setup needed | Servers per run |
 | --- | --- | --- | --- |
-| **vitest** | [examples/vitest](examples/vitest) | `pool: "forks"` + `fileParallelism: false` | 1 |
-| **mocha** | [examples/mocha](examples/mocha) | No `--parallel`; one `after` hook calling `stopServer()` | 1 |
-| **jest** | [examples/jest](examples/jest) | `--experimental-vm-modules`, `--runInBand`, `stopServer()` **per file** | 1 per file |
+| **vitest** | [examples/vitest](examples/vitest) | `pool: "forks"` + `fileParallelism: false`; raised `testTimeout` / `hookTimeout` | 1 |
+| **mocha** | [examples/mocha](examples/mocha) | No `--parallel`; raised `timeout`; one `after` hook calling `stopServer()` | 1 |
+| **jest** | [examples/jest](examples/jest) | `--experimental-vm-modules`, `--runInBand`, raised `testTimeout`, `stopServer()` **per file** | 1 per file |
 
-The scenarios: basic CRUD; a fresh database per store (and `await using`); the `setupDatabase` / `preInitialize` / `preConfigureDatabase` hooks plus subclassing; `waitForIndexing` and querying a static index; seeding from a `.ravendbdump` by path and by stream; and the server lifecycle (`configureServerOnce` vs `configureServer`, lazy start, server reuse).
+The scenarios: basic CRUD; a fresh database per store (and `await using`); the `setupDatabase` / `preInitialize` / `preConfigureDatabase` hooks plus subclassing; `waitForIndexing` and querying a static index; seeding from a `.ravendbdump` by path and by stream; the server lifecycle (`configureServerOnce` vs `configureServer`, lazy start, server reuse); and an HTTPS server with certificate authentication via `ServerOptions.secured()`.
 
 Build the package first, since each example depends on it via `file:../..`:
 
@@ -81,10 +81,15 @@ pnpm build
 Then run any folder:
 
 ```bash
-cd examples/vitest && pnpm install && pnpm test
+cd examples/vitest && npm install && npm test
 ```
 
-Start with the vitest example if you have no runner preference — it needs the least setup. See [examples/README.md](examples/README.md) for the runner comparison, and each folder's README for its own caveats.
+Start with the vitest example if you have no runner preference, since it needs the least setup. See [examples/README.md](examples/README.md) for the runner comparison, and each folder's README for its own caveats.
+
+Two notes that apply to every folder:
+
+- **Raise the runner's timeout.** The first `getDocumentStore()` call starts the embedded server, and on the very first run downloads the RavenDB binaries, which takes far longer than any runner's default (vitest and jest: 5s, mocha: 2s). Each example sets 300s: `testTimeout` + `hookTimeout` for vitest, `testTimeout` for jest, `timeout` for mocha.
+- **The jest and mocha examples pin TypeScript `~5.9`.** `ts-jest` and `ts-node` both cap their TypeScript peer below 7, so TypeScript 7 fails their install with an `ERESOLVE` peer conflict. The driver itself builds on TypeScript 7; the pin is a constraint of those two loaders, not of the driver.
 
 ## One server per test run
 
@@ -105,7 +110,7 @@ export default defineConfig({
 
 (`poolOptions.forks.singleFork` doesn't apply here: Vitest 4 removed it. `pool: "forks"` combined with `fileParallelism: false` is the equivalent: a single fork runs every test file sequentially, so the module-level server survives across files.)
 
-Mocha gets the same result by default, as long as you don't enable `--parallel`. Jest is the exception: it isolates the module registry per test file, so each file starts its own server no matter the configuration — `--runInBand` included. See the "Jest" section below.
+Mocha gets the same result by default, as long as you don't enable `--parallel`. Jest is the exception: it isolates the module registry per test file, so each file starts its own server no matter the configuration, `--runInBand` included. See the "Jest" section below.
 
 If you need multiple concurrent servers instead (e.g. to parallelize across workers), see the "Internal/advanced" note below.
 
@@ -127,7 +132,7 @@ With Jest, the single-worker equivalent is `--runInBand`, and two more caveats a
 
   (Or add the flag to `NODE_OPTIONS`, which is also the fix for IDE test runners that bypass the npm script.)
 
-  **Option 2: a `setupFiles` script that swaps the client's agent factory for a `require`-based one.** No Node flag needed. Add `undici` as a devDependency (package managers with strict `node_modules` layouts, like pnpm, won't resolve transitive packages):
+  **Option 2: a `setupFiles` script that swaps the client's agent factory for a `require`-based one.** No Node flag needed, but note that no example implements this path, so unlike Option 1 it is not covered by a runnable project here. Add `undici` as a devDependency (package managers with strict `node_modules` layouts, like pnpm, won't resolve transitive packages):
 
   ```ts
   // test/jest.setup.ts
@@ -149,7 +154,7 @@ With Jest, the single-worker equivalent is `--runInBand`, and two more caveats a
 
   A future `ravendb` client release is expected to drop the dynamic imports on the CommonJS path, making both workarounds unnecessary.
 
-- **Stop the server in every test file, or Jest hangs after a green run.** The embedded server deliberately survives `driver.dispose()` so it can be reused, and is normally cleaned up at process exit. Jest runs tests in-process, so the Raven.Server child-process handle keeps the event loop alive and Jest reports `Jest did not exit one second after the test run has completed.` — then hangs (in CI, until the job times out). Call `RavenTestDriver.stopServer()` in each file's `afterAll`:
+- **Stop the server in every test file, or Jest hangs after a green run.** The embedded server deliberately survives `driver.dispose()` so it can be reused, and is normally cleaned up at process exit. Jest runs tests in-process, so the Raven.Server child-process handle keeps the event loop alive and Jest reports `Jest did not exit one second after the test run has completed.` and then hangs (in CI, until the job times out). Call `RavenTestDriver.stopServer()` in each file's `afterAll`:
 
   ```ts
   afterAll(async () => {
@@ -158,7 +163,7 @@ With Jest, the single-worker equivalent is `--runInBand`, and two more caveats a
   });
   ```
 
-  Per file, and *not* in a `globalTeardown`: Jest gives each test file its own module registry, so the driver's module-level server singleton is per-file too. A `globalTeardown` runs in yet another registry, where it sees no server and stops nothing — the run still hangs and each file's server leaks until the process is killed. Only the registry that started a server can stop it.
+  Per file, and *not* in a `globalTeardown`: Jest gives each test file its own module registry, so the driver's module-level server singleton is per-file too. A `globalTeardown` runs in yet another registry, where it sees no server and stops nothing: the run still hangs and each file's server leaks until the process is killed. Only the registry that started a server can stop it.
 
   The same isolation means each Jest test file starts its own embedded server, even under `--runInBand`. That is inherent to Jest; for a single server per run, use vitest (`pool: "forks"` + `fileParallelism: false`) or Mocha without `--parallel`.
 
@@ -234,11 +239,12 @@ Unlike Jest, Mocha has no VM sandbox: tests run on plain Node, so the `ravendb` 
 - `driver.waitForIndexing(store, database?, timeout?)`: waits until all indexes are non-stale (default timeout 60s), throwing (with index error details) on timeout.
 - `driver.waitForUserToContinueTheTest(store)`: opens RavenDB Studio for the store's database and resumes once you create a `Debug/Done` document from Studio.
   **Warning:** this blocks forever until that document appears; it never resumes on its own. Treat it as an interactive/debug-only helper and never leave a call to it in committed test code, or CI will hang indefinitely.
-- `driver.dispose()`: disposes all stores handed out by this driver (and any scoped server). Also available via `await using driver = new RavenTestDriver()` (TypeScript 5.2+ / `ESNext.Disposable` lib, since `RavenTestDriver` implements `AsyncDisposable`).
+- `driver.dispose()`: disposes all stores handed out by this driver (and any scoped server). Also available via `await using driver = new RavenTestDriver()` (TypeScript 5.2+ / `ESNext.Disposable` lib, since `RavenTestDriver` implements `AsyncDisposable`). Disposal failures are collected and thrown together as an `AggregateError`.
+- `driver.isDisposed`: whether `dispose()` has finished. `getDocumentStore()` throws once the driver is disposed.
+- `driver.onDriverDisposed`: optional callback invoked once, after `dispose()` completes (the C# `DriverDisposed` event).
+- `TestServerOptions.useFiddler()`: static factory returning options bound to `http://<hostname>:0` with `Security.UnsecuredAccessAllowed=PrivateNetwork`, so the traffic is visible to a proxy such as Fiddler.
 
-### Internal/advanced
-
-`driver.configureScopedServer(options)` exists to give an individual `RavenTestDriver` instance its own embedded server instead of sharing the process-wide one (e.g. to run multiple concurrent servers). It is marked `@internal` and used for RavenDB-internal testing; it is not part of the supported public API and may change without notice.
+For a server secured with `ServerOptions.secured()` / `securedWithExec()`, the driver passes the client certificate to every store it hands out, so test code itself never mentions certificates. See scenario 07 in the [examples](examples).
 
 ## Testing this package
 
