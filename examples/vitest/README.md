@@ -52,6 +52,7 @@ sequentially in a single fork, so the one server is shared.
 | [test/04-indexing-and-queries.spec.ts](test/04-indexing-and-queries.spec.ts) | `waitForIndexing`, `waitForIndexingTimeout`, querying a static index |
 | [test/05-database-dump.spec.ts](test/05-database-dump.spec.ts) | Seeding from a `.ravendbdump` via file path and stream |
 | [test/06-server-lifecycle.spec.ts](test/06-server-lifecycle.spec.ts) | `configureServerOnce` vs `configureServer`, lazy start, server reuse |
+| [test/07-secured-server.spec.ts](test/07-secured-server.spec.ts) | An HTTPS server with certificate authentication (`secured()`) |
 
 ## Cleanup rules
 

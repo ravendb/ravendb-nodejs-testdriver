@@ -12,7 +12,7 @@ import {
     GetIndexErrorsOperation,
     GetStatisticsOperation,
 } from "ravendb";
-import type { DatabaseRecord, IDocumentStore, IndexErrors } from "ravendb";
+import type { DatabaseRecord, IDocumentStore, IndexErrors, IStoreAuthOptions } from "ravendb";
 import { EmbeddedServer, ServerOptions } from "ravendb-embedded";
 import { TestServerOptions } from "./TestServerOptions";
 import type { GetDocumentStoreOptions } from "./GetDocumentStoreOptions";
@@ -60,6 +60,33 @@ function getEmptySettingsFile(): string {
     return emptySettingsFilePath;
 }
 
+/**
+ * Client-side auth options for a server secured via ServerOptions.secured() /
+ * securedWithExec(). Mirrors what ravendb-embedded does for the stores it hands
+ * out: without this, stores built here would talk plain HTTP to an HTTPS server
+ * and every request would fail. Returns undefined for an unsecured server.
+ */
+export function toAuthOptions(options: ServerOptions): IStoreAuthOptions | undefined {
+    const security = options.security;
+    if (!security) {
+        return undefined;
+    }
+    return {
+        certificate: security.clientCertificate,
+        type: security.clientCertificateType,
+        password: security.certificatePassword,
+        ca: security.ca,
+    };
+}
+
+/**
+ * Auth options of the server backing a given parent store, so per-test stores
+ * can be built with the same certificate. Keyed by the parent (maintenance)
+ * store, which is the only handle getDocumentStore() has on the server it is
+ * talking to.
+ */
+const storeAuthOptions = new WeakMap<IDocumentStore, IStoreAuthOptions>();
+
 async function startServerAndCreateStore(server: EmbeddedServer, options: ServerOptions): Promise<IDocumentStore> {
     // same as C#: force an empty settings file and in-memory storage
     options.commandLineArgs.unshift("-c", getEmptySettingsFile());
@@ -70,9 +97,15 @@ async function startServerAndCreateStore(server: EmbeddedServer, options: Server
 
     // The node client requires a database argument; this store is used only for
     // server-wide maintenance operations (create/delete database), so it is left empty.
-    const store = new DocumentStore(url, "");
+    const authOptions = toAuthOptions(options);
+    const store = authOptions
+        ? new DocumentStore(url, "", authOptions)
+        : new DocumentStore(url, "");
     store.conventions.disableTopologyUpdates = true;
     store.initialize();
+    if (authOptions) {
+        storeAuthOptions.set(store, authOptions);
+    }
     return store;
 }
 
@@ -289,7 +322,12 @@ export class RavenTestDriver implements AsyncDisposable {
 
         let store: IDocumentStore | undefined;
         try {
-            store = new DocumentStore(parentStore.urls, name);
+            // Inherit the parent's certificate, so per-test stores can reach a
+            // secured server (undefined for the usual unsecured case).
+            const authOptions = storeAuthOptions.get(parentStore);
+            store = authOptions
+                ? new DocumentStore(parentStore.urls, name, authOptions)
+                : new DocumentStore(parentStore.urls, name);
             store.conventions.disableTopologyUpdates = true;
 
             await this.preInitialize(store);

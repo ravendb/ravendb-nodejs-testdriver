@@ -126,6 +126,7 @@ TypeScript 7 here fails `npm install` with an `ERESOLVE` peer conflict.
 | [test/04-indexing-and-queries.test.ts](test/04-indexing-and-queries.test.ts) | `waitForIndexing`, `waitForIndexingTimeout`, querying a static index |
 | [test/05-database-dump.test.ts](test/05-database-dump.test.ts) | Seeding from a `.ravendbdump` via file path and stream |
 | [test/06-server-lifecycle.test.ts](test/06-server-lifecycle.test.ts) | `configureServerOnce` vs `configureServer`, lazy start, server reuse |
+| [test/07-secured-server.test.ts](test/07-secured-server.test.ts) | An HTTPS server with certificate authentication; own module registry, so no collision with the unsecured files |
 
 ## Same examples for other runners
 

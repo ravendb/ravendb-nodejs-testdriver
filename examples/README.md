@@ -40,9 +40,34 @@ file) to run licensed; with neither set, the server runs unlicensed.
 | 04 | `waitForIndexing`, `waitForIndexingTimeout`, querying a static index |
 | 05 | Seeding from a `.ravendbdump` via file path and stream |
 | 06 | `configureServerOnce` vs `configureServer`, lazy start, server reuse |
+| 07 | An HTTPS server with certificate authentication (`secured()`) |
 
 Each folder also has a `serverOptions.ts` with the shared `TestServerOptions`
-(temp data/logs directories, EULA accepted, license read from the environment).
+(temp data/logs directories, EULA accepted, license read from the environment),
+and a `securedServerOptions.ts` used only by scenario 07.
+
+## The secured example
+
+Scenario 07 runs the embedded server over HTTPS with certificate
+authentication. The test bodies are the same as everywhere else — once
+`secured()` is configured, the driver builds every store it hands out with the
+client certificate, so test code never mentions certificates.
+
+It uses throwaway self-signed certificates committed under [certs/](certs) —
+see that folder's README for what they are and why their private key is in the
+repository.
+
+Because the driver keeps one embedded server per process and a secured server is
+a different server, scenario 07 uses `configureServer` rather than
+`configureServerOnce`, and each runner reconciles that differently:
+
+- **vitest** — `fileParallelism: false` already serializes files; the file stops
+  the secured server in its own `afterAll`.
+- **jest** — nothing special. Each file gets its own module registry and
+  therefore its own server, so it cannot collide with the unsecured files.
+- **mocha** — all files share one process and one server, so the file stops the
+  shared unsecured server in `before` before claiming the slot. It relies on
+  sorting last; a file running after it would get the secured server instead.
 
 ## The one thing every runner has to get right
 
